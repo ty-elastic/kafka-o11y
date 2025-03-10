@@ -8,10 +8,9 @@ FROM eclipse-temurin:17
 
 COPY --from=build /usr/src/app/target/processor-0.0.1-SNAPSHOT.jar /processor.jar
 
-COPY lib/ .
 RUN wget -O elastic-otel-javaagent.jar https://repo1.maven.org/maven2/co/elastic/otel/elastic-otel-javaagent/1.2.1/elastic-otel-javaagent-1.2.1.jar 
 
-ENV OTEL_EXPERIMENTAL_RESOURCE_DETECTORS="process_runtime"
+ENV COORDINATOR_HOST=""
 
 ENV BOOTSTRAP_SERVER=""
 ENV IN_TOPIC=""
@@ -21,9 +20,8 @@ ENV OUT_TOPIC=""
 EXPOSE 9003
 ENTRYPOINT java \
 -javaagent:elastic-otel-javaagent.jar \
--Dotel.java.experimental.span-attributes.copy-from-baggage.include=* \
--Dotel.javaagent.extensions=opentelemetry-java-baggage-log-record-processor-all.jar \
 -jar /processor.jar \
+--coordinator_host=${COORDINATOR_HOST} \
 --bootstrap_server=${BOOTSTRAP_SERVER} \
 --in_topic=${IN_TOPIC} \
 --in_group=${IN_GROUP} \

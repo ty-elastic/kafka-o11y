@@ -31,7 +31,7 @@ public class Main  implements ApplicationRunner {
         for (String opt : args.getOptionNames()) {
             log.info(opt + ":" + args.getOptionValues(opt));
         }
-        
+
         String bootstrapServer = args.getOptionValues("bootstrap_server").get(0);
 
         Producer producer = null;
@@ -44,6 +44,13 @@ public class Main  implements ApplicationRunner {
             String inTopic = args.getOptionValues("in_topic").get(0);
             String inGroup = args.getOptionValues("in_group").get(0);
             final Consumer consumer = new Consumer(bootstrapServer, inTopic, inGroup);
+
+            Coordinator coordinator = null;
+            if (args.containsOption("coordinator_host") && args.getOptionValues("coordinator_host").get(0).equals("") == false) {
+                String coordinatorHost = args.getOptionValues("coordinator_host").get(0);
+                coordinator = new Coordinator(coordinatorHost, inGroup);
+                coordinator.start();
+            }
 
             Runtime.getRuntime().addShutdownHook(new Thread() {
                 public void run() {
@@ -59,7 +66,7 @@ public class Main  implements ApplicationRunner {
                 }
             });
 
-            consumer.run(producer);
+            consumer.run(coordinator, producer);
         }
         else if (producer != null) {
             Tracer tracer = GlobalOpenTelemetry.getTracer("producer");

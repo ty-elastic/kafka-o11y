@@ -46,7 +46,7 @@ public class Consumer {
         consumer.wakeup();
     }
 
-    public void run(Producer producer) {
+    public void run(Coordinator coordinator, Producer producer) {
 
         try {
             // subscribe consumer to our topic(s)
@@ -63,6 +63,11 @@ public class Consumer {
 
                     if (producer != null)
                         producer.notify(record.value());
+                }
+
+                if (coordinator != null) {
+                    int sleep = coordinator.getLatency();
+                    Thread.sleep(sleep);
                 }
             }
 
