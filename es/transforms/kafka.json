@@ -1,0 +1,256 @@
+{
+    "source": {
+        "index": "traces-*",
+        "query": {
+            "bool": {
+                "filter": {
+                    "bool" : {
+                        "must" : [
+                            {
+                                "exists": {
+                                    "field": "trace.id"
+                                }
+                            },
+                            {
+                                "exists": {
+                                    "field": "span.id"
+                                }
+                            },
+                            {
+                                "exists": {
+                                    "field": "service.name"
+                                }
+                            },
+                            {
+                                "exists": {
+                                    "field": "timestamp.us"
+                                }
+                            }
+                        ],
+                        "should": [
+                            { 
+                                "bool": {
+                                    "must": [
+                                        {
+                                            "term": {
+                                                "span.type": "messaging"
+                                            }
+                                        },
+                                        {
+                                            "exists": {
+                                                "field": "span.message.queue.name"
+                                            }
+                                        }
+                                    ]
+                                }
+                            },
+                            { 
+                                "bool": {
+                                    "must": [
+                                        {
+                                            "term": {
+                                                "transaction.type": "messaging"
+                                            }
+                                        },
+                                        {
+                                            "exists": {
+                                                "field": "transaction.message.queue.name"
+                                            }
+                                        }
+                                    ]
+                                }
+                            }
+                        ],
+                        "minimum_should_match" : 1
+                    }
+                }
+            }
+        }
+    },
+    "dest": {
+        "index": "kafka-trace-stats-1m"
+    },
+    "sync": {
+        "time": {
+            "field": "event.ingested",
+            "delay": "60s"
+        }
+    },
+    "pivot": {
+        "group_by": {
+            "trace.id": {
+                "terms": {
+                    "field": "trace.id"
+                }
+            }
+        },
+        "aggregations": {
+            "paths": {
+                "scripted_metric": {
+                    "init_script": "state.docs = []",
+                    "map_script": "
+                        Map span = [
+                            '@timestamp':doc['@timestamp'].value,
+                            'timestamp.us':doc['timestamp.us'].value,
+                            'service.name':doc['service.name'].value,
+                            'span.id':doc['span.id'].value
+                        ];
+
+                        if (doc['parent.id'].size() > 0) {
+                            span['parent.id'] = doc['parent.id'].value;
+                        }
+
+                        /* copy message queue name */
+                        if (doc['span.message.queue.name'].size() > 0) {
+                            span['message.queue.name'] = doc['span.message.queue.name'].value;
+                        }
+                        else if (doc['transaction.message.queue.name'].size() > 0) {
+                            span['message.queue.name'] = doc['transaction.message.queue.name'].value;
+                        }
+
+                        /* bookend queues with exit (enqueue) and enter (dequeue) labels */
+                        if (doc['span.action'].size() > 0) {
+                            if (doc['span.action'].value.equals('publish')) {
+                                span['kind'] = 'exit';
+                            } else {
+                                span['kind'] = 'enter';
+                            }
+                        } 
+                        else if (doc['labels.messaging_operation'].size() > 0) {
+                            if (doc['labels.messaging_operation'].value.equals('process')) {
+                                span['kind'] = 'enter';
+                            } else {
+                                span['kind'] = 'exit';
+                            }
+                        }
+
+                        /* copy all docs from this shard */
+                        state.docs.add(span);
+                    ",
+                    "combine_script": "return state.docs;",
+                    "reduce_script": "
+                        /* build graph */
+                        boolean attach_to_parent(def states, def child) {
+                            def is_root = true;
+                            /* for all shards */
+                            for (s in states) {
+                                /* for all docs in that shard */
+                                for (span in s) {
+                                    if (span.containsKey('children') == false) {
+                                        span['children'] = [];
+                                    }
+                                    if (span['span.id'].equals(child['parent.id'])) {
+                                        /* assign child to parent */
+                                        span['children'].add(child);
+                                        /* parent found, can't be root */
+                                        is_root = false;
+                                    }
+                                }
+                            }
+                            return is_root;
+                        } 
+
+                        /* build paths */
+                        void build_paths(def path, def node, def out_paths, def out_queues, def root_time, def enqueue_time, def enqueue_service) {
+                            /* exiting queue, record hop-by-hop metrics */
+                            if (node['kind'].equals('enter')) {
+                                def new_queue_doc = new HashMap();
+                                new_queue_doc['path'] = enqueue_service + '-' + node['service.name'];
+                                new_queue_doc['duration.us'] = node['timestamp.us'] - enqueue_time;
+                                out_queues.add(new_queue_doc);
+                            }
+
+                            /* leaf node, record e2e metrics */
+                            if (node['children'].size() == 0) {
+                                def new_path = path;
+                                if (!new_path.equals('')) {
+                                    new_path += '-';
+                                }
+                                new_path += node['service.name'];
+
+                                def new_path_doc = new HashMap();
+                                new_path_doc['path'] = new_path;
+                                new_path_doc['duration.us'] = node['timestamp.us'] - root_time;
+                                out_paths.add(new_path_doc);
+                                /* done */
+                                return;
+                            }
+
+                            /* middle node, build path */
+                            for (child in node['children']) {
+                                def new_path = path;
+                                /* entering queue */
+                                if (node['kind'].equals('exit')) {
+                                    if (!new_path.equals('')) {
+                                        new_path += '-';
+                                    }
+                                    new_path += node['service.name'] + '-' + node['message.queue.name'];
+
+                                    /* entering queue, record time for hop-by-hop metrics */
+                                    enqueue_time = node['timestamp.us'];
+                                    enqueue_service = node['service.name'];
+                                }
+                                /* recurse down this path */
+                                build_paths(new_path, child, out_paths, out_queues, root_time, enqueue_time, enqueue_service);
+                            }
+                        }
+
+                        /* build graph */
+                        def root = null;
+                        /* for all shards */
+                        for (s in states) {
+                            /* for all docs in that shard */
+                            for (span in s) {
+                                if (span.containsKey('parent.id') == false) {
+                                    root = span;
+                                } else {
+                                    def is_root = attach_to_parent(states, span);
+                                    if ((is_root == true) && (root == null)) {
+                                        root = span;
+                                    }
+                                }
+                            }
+                        }
+
+                        /* build paths */
+                        def path = '';
+                        def out_paths = [];
+                        def out_queues = [];
+                        def root_time = root['timestamp.us'];
+                        build_paths(path, root, out_paths, out_queues, root_time, 0, '');
+
+                        /* output doc */
+                        def out_doc = new HashMap();
+                        out_doc['@timestamp'] = root['@timestamp'];
+
+                        def rand = new Random();
+
+                        /* randomly feature 1 e2e metric */
+                        def rand_selection = rand.nextInt(out_paths.size());
+                        out_doc['e2e.rand.path'] = out_paths[rand_selection].path;
+                        out_doc['e2e.rand.duration.us'] = out_paths[rand_selection]['duration.us'];
+
+                        /* record all e2e samples */
+                        for (doc in out_paths) {
+                            out_doc['e2e.sample.' + doc.path] = doc['duration.us'];
+                        }
+
+                        /* randomly feature 1 hop-by-hop metric */
+                        rand_selection = rand.nextInt(out_queues.size());
+                        out_doc['hop.rand.path'] = out_queues[rand_selection].path;
+                        out_doc['hop.rand.duration.us'] = out_queues[rand_selection]['duration.us'];
+
+                        /* record all hop-by-hop samples */
+                        for (doc in out_queues) {
+                            out_doc['hop.sample.' + doc.path] = doc['duration.us'];
+                        }
+
+                        out_doc['root.name'] = root['service.name'];
+
+                        return out_doc;
+                    "
+                }
+            }
+        }
+    }
+}

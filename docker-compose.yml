@@ -1,0 +1,185 @@
+services:
+
+
+  collector:
+    image: docker.elastic.co/beats/elastic-agent:8.16.1
+    restart: on-failure
+    healthcheck:
+      test: curl --fail http://localhost:13133/ || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 1m
+    ports:
+      - "5317:5317"
+    volumes:
+      - ./src/collector/collector.yml:/collector.yml
+      - /:/hostfs
+    entrypoint: "/usr/share/elastic-agent/elastic-agent"
+    command: ["otel", "-c", "/collector.yml"]
+    environment:
+      ELASTIC_AGENT_OTEL: "true"
+      ELASTIC_APM_SERVER_ENDPOINT: ${ELASTIC_APM_SERVER_ENDPOINT}
+      ELASTIC_APM_SERVER_SECRET: ${ELASTIC_APM_SERVER_SECRET}
+      ELASTICSEARCH_URL: ${ELASTICSEARCH_URL}
+      ELASTICSEARCH_APIKEY: ${ELASTICSEARCH_APIKEY}
+    privileged: true
+    pid: "host"
+    user: root
+
+  processor1:
+    build:
+      context: ./src/processor/
+    restart: on-failure
+    environment:
+      BOOTSTRAP_SERVER: "kafka:10093"
+      OUT_TOPIC: "q1"
+      OTEL_SERVICE_NAME: "processor1"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://collector:5317"
+      OTEL_EXPORTER_OTLP_PROTOCOL: "grpc"
+      OTEL_RESOURCE_ATTRIBUTES: "deployment.environment=kafka"
+    depends_on:
+      collector:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+
+  processor2a:
+    build:
+      context: ./src/processor/
+    restart: on-failure
+    environment:
+      BOOTSTRAP_SERVER: "kafka:10093"
+      IN_TOPIC: "q1"
+      IN_GROUP: "processor2a"
+      OUT_TOPIC: "q2a"
+      OTEL_SERVICE_NAME: "processor2a"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://collector:5317"
+      OTEL_EXPORTER_OTLP_PROTOCOL: "grpc"
+      OTEL_RESOURCE_ATTRIBUTES: "deployment.environment=kafka"
+    depends_on:
+      collector:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+
+  processor3a:
+    build:
+      context: ./src/processor/
+    restart: on-failure
+    environment:
+      BOOTSTRAP_SERVER: "kafka:10093"
+      IN_TOPIC: "q2a"
+      IN_GROUP: "processor3a"
+      OTEL_SERVICE_NAME: "processor3a"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://collector:5317"
+      OTEL_EXPORTER_OTLP_PROTOCOL: "grpc"
+      OTEL_RESOURCE_ATTRIBUTES: "deployment.environment=kafka"
+    depends_on:
+      collector:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+
+  processor4b:
+    build:
+      context: ./src/processor/
+    restart: on-failure
+    environment:
+      BOOTSTRAP_SERVER: "kafka:10093"
+      IN_TOPIC: "q1"
+      IN_GROUP: "processor4b"
+      OUT_TOPIC: "q4b"
+      OTEL_SERVICE_NAME: "processor4b"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://collector:5317"
+      OTEL_EXPORTER_OTLP_PROTOCOL: "grpc"
+      OTEL_RESOURCE_ATTRIBUTES: "deployment.environment=kafka"
+    depends_on:
+      collector:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+
+  processor5b:
+    build:
+      context: ./src/processor/
+    restart: on-failure
+    environment:
+      BOOTSTRAP_SERVER: "kafka:10093"
+      IN_TOPIC: "q4b"
+      IN_GROUP: "processor5b"
+      OUT_TOPIC: "q5b"
+      OTEL_SERVICE_NAME: "processor5b"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://collector:5317"
+      OTEL_EXPORTER_OTLP_PROTOCOL: "grpc"
+      OTEL_RESOURCE_ATTRIBUTES: "deployment.environment=kafka"
+    depends_on:
+      collector:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+
+  processor6b:
+    build:
+      context: ./src/processor/
+    restart: on-failure
+    environment:
+      BOOTSTRAP_SERVER: "kafka:10093"
+      IN_TOPIC: "q5b"
+      IN_GROUP: "processor6b"
+      OTEL_SERVICE_NAME: "processor6b"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://collector:5317"
+      OTEL_EXPORTER_OTLP_PROTOCOL: "grpc"
+      OTEL_RESOURCE_ATTRIBUTES: "deployment.environment=kafka"
+    depends_on:
+      collector:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+
+  processor7c:
+    build:
+      context: ./src/processor/
+    restart: on-failure
+    environment:
+      BOOTSTRAP_SERVER: "kafka:10093"
+      IN_TOPIC: "q2a"
+      IN_GROUP: "processor7c"
+      OTEL_SERVICE_NAME: "processor7c"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://collector:5317"
+      OTEL_EXPORTER_OTLP_PROTOCOL: "grpc"
+      OTEL_RESOURCE_ATTRIBUTES: "deployment.environment=kafka"
+    depends_on:
+      collector:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+
+  kafka:
+    build:
+      context: ./src/kafka/
+    ports:
+      - "10092:10092"
+    healthcheck:
+      test: /home/appuser/kafka/bin/kafka-cluster.sh cluster-id --bootstrap-server localhost:10092 || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 1m
+    environment:
+      # Configure listeners for both docker and host communication
+      KAFKA_LISTENERS: CONTROLLER://localhost:10091,HOST://0.0.0.0:10092,DOCKER://0.0.0.0:10093
+      KAFKA_ADVERTISED_LISTENERS: HOST://localhost:10092,DOCKER://kafka:10093
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,DOCKER:PLAINTEXT,HOST:PLAINTEXT
+
+      # Settings required for KRaft mode
+      KAFKA_NODE_ID: 1
+      KAFKA_PROCESS_ROLES: broker,controller
+      KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
+      KAFKA_CONTROLLER_QUORUM_VOTERS: 1@localhost:10091
+
+      # Listener to use for broker-to-broker communication
+      KAFKA_INTER_BROKER_LISTENER_NAME: DOCKER
+
+      # Required for a single node cluster
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
