@@ -200,51 +200,51 @@ services:
       kafka:
         condition: service_healthy
 
-  processor8:
-    build:
-      context: ./src/processor/
-    restart: on-failure
-    environment:
-      COORDINATOR_HOST: "coordinator:7010"
+  # processor8:
+  #   build:
+  #     context: ./src/processor/
+  #   restart: on-failure
+  #   environment:
+  #     COORDINATOR_HOST: "coordinator:7010"
 
-      BOOTSTRAP_SERVER: "kafka:10093"
-      OUT_TOPIC: "q8"
+  #     BOOTSTRAP_SERVER: "kafka:10093"
+  #     OUT_TOPIC: "q8"
 
-      OTEL_SERVICE_NAME: "processor8"
-      OTEL_EXPORTER_OTLP_ENDPOINT: "http://collector:5317"
-      OTEL_EXPORTER_OTLP_PROTOCOL: "grpc"
-      OTEL_RESOURCE_ATTRIBUTES: "deployment.environment=kafka"
-    depends_on:
-      coordinator:
-        condition: service_healthy
-      collector:
-        condition: service_healthy
-      kafka:
-        condition: service_healthy
+  #     OTEL_SERVICE_NAME: "processor8"
+  #     OTEL_EXPORTER_OTLP_ENDPOINT: "http://collector:5317"
+  #     OTEL_EXPORTER_OTLP_PROTOCOL: "grpc"
+  #     OTEL_RESOURCE_ATTRIBUTES: "deployment.environment=kafka"
+  #   depends_on:
+  #     coordinator:
+  #       condition: service_healthy
+  #     collector:
+  #       condition: service_healthy
+  #     kafka:
+  #       condition: service_healthy
 
-  processor9d:
-    build:
-      context: ./src/processor/
-    restart: on-failure
-    environment:
-      COORDINATOR_HOST: "coordinator:7010"
+  # processor9d:
+  #   build:
+  #     context: ./src/processor/
+  #   restart: on-failure
+  #   environment:
+  #     COORDINATOR_HOST: "coordinator:7010"
 
-      BOOTSTRAP_SERVER: "kafka:10093"
-      IN_TOPIC: "q8"
-      IN_GROUP: "processor9d"
-      OUT_TOPIC: "q2a"
+  #     BOOTSTRAP_SERVER: "kafka:10093"
+  #     IN_TOPIC: "q8"
+  #     IN_GROUP: "processor9d"
+  #     OUT_TOPIC: "q2a"
 
-      OTEL_SERVICE_NAME: "processor9d"
-      OTEL_EXPORTER_OTLP_ENDPOINT: "http://collector:5317"
-      OTEL_EXPORTER_OTLP_PROTOCOL: "grpc"
-      OTEL_RESOURCE_ATTRIBUTES: "deployment.environment=kafka"
-    depends_on:
-      coordinator:
-        condition: service_healthy
-      collector:
-        condition: service_healthy
-      kafka:
-        condition: service_healthy
+  #     OTEL_SERVICE_NAME: "processor9d"
+  #     OTEL_EXPORTER_OTLP_ENDPOINT: "http://collector:5317"
+  #     OTEL_EXPORTER_OTLP_PROTOCOL: "grpc"
+  #     OTEL_RESOURCE_ATTRIBUTES: "deployment.environment=kafka"
+  #   depends_on:
+  #     coordinator:
+  #       condition: service_healthy
+  #     collector:
+  #       condition: service_healthy
+  #     kafka:
+  #       condition: service_healthy
 
   kafka:
     build:
