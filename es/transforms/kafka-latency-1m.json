@@ -113,22 +113,17 @@
                         }
 
                         /* copy message queue name */
+                        /* bookend queues with exit (enqueue) and enter (dequeue) labels */
                         if (doc.containsKey('span.message.queue.name') && (doc['span.message.queue.name'].size() > 0)) {
                             span['message.queue.name'] = doc['span.message.queue.name'].value;
-                        }
-                        else if (doc.containsKey('transaction.message.queue.name') && (doc['transaction.message.queue.name'].size() > 0)) {
-                            span['message.queue.name'] = doc['transaction.message.queue.name'].value;
-                        }
-
-                        /* bookend queues with exit (enqueue) and enter (dequeue) labels */
-                        if (doc.containsKey('span.action') && (doc['span.action'].size() > 0)) {
                             if (doc['span.action'].value.equals('publish')) {
                                 span['kind'] = 'exit';
                             } else {
                                 span['kind'] = 'enter';
                             }
-                        } 
-                        else if (doc.containsKey('labels.messaging_operation') && (doc['labels.messaging_operation'].size() > 0)) {
+                        }
+                        else if (doc.containsKey('transaction.message.queue.name') && (doc['transaction.message.queue.name'].size() > 0)) {
+                            span['message.queue.name'] = doc['transaction.message.queue.name'].value;
                             if (doc['labels.messaging_operation'].value.equals('process')) {
                                 span['kind'] = 'enter';
                             } else {
@@ -145,6 +140,9 @@
                                 }
                             }
                         }
+
+                        span['parent'] = null;
+                        span['children'] = [];
                         
                         /* copy all docs from this shard */
                         state.docs.add(span);
@@ -152,112 +150,104 @@
                     "combine_script": "return state.docs;",
                     "reduce_script": "
                         /* build graph */
-                        boolean attach_to_parent(def states, def child) {
-                            def isolated = true;
-                            /* for all shards */
-                            for (s in states) {
-                                /* for all docs in that shard */
-                                for (span in s) {
-                                    if (span.containsKey('children') == false) {
-                                        span['children'] = [];
-                                    }
-                                    if (span['span.id'].equals(child['parent.id'])) {
-                                        /* assign child to parent */
-                                        span['children'].add(child);
-                                        /* parent found, can't be root */
-                                        isolated = false;
-                                    }
+                        List attach_to_children(def children, def parent) {
+                            def unassigned_children = [];
+                            /* for all remaining children */
+                            for (child in children) {
+                                /* assign child to parent */
+                                if (child['parent.id'].equals(parent['span.id'])) {
+                                    parent['children'].add(child);
+                                    child['parent'] = parent;
+                                } else {
+                                    unassigned_children.add(child);
                                 }
                             }
-                            return isolated;
+                            return unassigned_children;
                         } 
 
                         /* build paths */
-                        void build_paths(def path, def node, def out_paths, def out_queues, def root_time, def enqueue_time, def enqueue_service) {
-                            if (node.containsKey('children')) {
-                                /* exiting queue, record hop-by-hop metrics */
-                                if ((node['kind'].equals('enter')) && (enqueue_time > 0)) {
-                                    def new_queue_doc = new HashMap();
-                                    new_queue_doc['path'] = enqueue_service + '-' + node['service.name'];
-                                    new_queue_doc['duration.us'] = node['timestamp.us'] - enqueue_time;
-                                    out_queues.add(new_queue_doc);
+                        void build_paths(def path, def node, def out_paths, def out_queues, def root_time, def enqueue_time, def enqueue_service, def depth) {
+                            /* exiting queue, record hop-by-hop metrics */
+                            if ((node['kind'].equals('enter')) && (enqueue_time > 0)) {
+                                def new_queue_doc = new HashMap();
+                                new_queue_doc['path'] = enqueue_service + '-' + node['service.name'];
+                                new_queue_doc['duration.us'] = node['timestamp.us'] - enqueue_time;
+                                out_queues.add(new_queue_doc);
+                                depth = depth + 1;
+                            }
+                        
+                            /* leaf node, record e2e metrics */
+                            if (node['children'].size() == 0) {
+                                def new_path = path;
+                                if (!new_path.equals('')) {
+                                    new_path += '-';
                                 }
-                            
-                                /* leaf node, record e2e metrics */
-                                if (node['children'].size() == 0) {
-                                    def new_path = path;
+                                new_path += node['service.name'];
+
+                                def new_path_doc = new HashMap();
+                                new_path_doc['path'] = new_path;
+                                new_path_doc['duration.us'] = node['timestamp.us'] - root_time;
+                                new_path_doc['depth'] = depth;
+                                out_paths.add(new_path_doc);
+                                return;
+                            }
+
+                            /* middle node, build path */
+                            for (child in node['children']) {
+                                def new_path = path;
+                                /* entering queue */
+                                if (node['kind'].equals('exit')) {
                                     if (!new_path.equals('')) {
                                         new_path += '-';
                                     }
-                                    new_path += node['service.name'];
+                                    new_path += node['service.name'] + '-' + node['message.queue.name'];
 
-                                    def new_path_doc = new HashMap();
-                                    new_path_doc['path'] = new_path;
-                                    new_path_doc['duration.us'] = node['timestamp.us'] - root_time;
-                                    out_paths.add(new_path_doc);
-                                    return;
+                                    /* entering queue, record time for hop-by-hop metrics */
+                                    enqueue_time = node['timestamp.us'];
+                                    enqueue_service = node['service.name'];
                                 }
-
-                                /* middle node, build path */
-                                for (child in node['children']) {
-                                    def new_path = path;
-                                    /* entering queue */
-                                    if (node['kind'].equals('exit')) {
-                                        if (!new_path.equals('')) {
-                                            new_path += '-';
-                                        }
-                                        new_path += node['service.name'] + '-' + node['message.queue.name'];
-
-                                        /* entering queue, record time for hop-by-hop metrics */
-                                        enqueue_time = node['timestamp.us'];
-                                        enqueue_service = node['service.name'];
-                                    }
-                                    /* recurse down this path */
-                                    build_paths(new_path, child, out_paths, out_queues, root_time, enqueue_time, enqueue_service);
-                                }
+                                /* recurse down this path */
+                                build_paths(new_path, child, out_paths, out_queues, root_time, enqueue_time, enqueue_service, depth);
                             }
                         }
 
-                        /* build graph */
-                        def root = null;
-                        def isolated_spans = [];
+                        /* collapse shards */
+                        def spans = [];
                         /* for all shards */
                         for (s in states) {
                             /* for all docs in that shard */
                             for (span in s) {
-                                if (span.containsKey('parent.id') == false) {
-                                    root = span;
-                                } else {
-                                    def isolated = attach_to_parent(states, span);
-                                    if (isolated) {
-                                        isolated_spans.add(span);
-                                    }
-                                }
+                                spans.add(span);
                             }
-                        }
-                        
-                        if ((root == null) && (isolated_spans.size() > 0)) {
-                            isolated_spans.sort((HashMap o1, HashMap o2)->o1['timestamp.us'].compareTo(o2['timestamp.us']));
-                            root = isolated_spans[0];
-                            isolated_spans.remove(0);
                         }
 
                         def out_doc = new HashMap();
 
-                        /* if there are any remaining isolated spans, then this is an incomplete doc */
-                        if (isolated_spans.size() > 0) {
-                            out_doc['isolated_spans'] = isolated_spans.size();
+                        /* no docs; unexpected */
+                        if (spans.size() == 0) {
                             return out_doc;
                         }
-                        if (root == null)
-                            return out_doc;
+
+                        /* build graph */
+                        def unassigned_children = spans;
+                        for (parent in spans) {
+                            /* attach parent to children */
+                            unassigned_children = attach_to_children(unassigned_children, parent);
+                        }
+
+                        /* arbitrary start */
+                        def root = spans[0];
+                        /* climb to root */
+                        while (root['parent'] != null) {
+                            root = root['parent'];
+                        }
 
                         /* build paths */
                         def path = '';
                         def out_paths = [];
                         def out_queues = [];
                         def root_time = root['timestamp.us'];
-                        build_paths(path, root, out_paths, out_queues, root_time, 0, '');
+                        build_paths(path, root, out_paths, out_queues, root_time, 0, '', 0);
 
                         /* output doc */
                         out_doc['timestamp'] = root['@timestamp'];
@@ -269,6 +259,7 @@
                             def rand_selection = rand.nextInt(out_paths.size());
                             out_doc['e2e.path'] = out_paths[rand_selection].path;
                             out_doc['e2e.duration.us'] = out_paths[rand_selection]['duration.us'];
+                            out_doc['e2e.depth'] = out_paths[rand_selection]['depth'];
 
                             /* record all e2e samples */
                             for (doc in out_paths) {
