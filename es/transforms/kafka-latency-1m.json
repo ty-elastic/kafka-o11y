@@ -159,8 +159,6 @@
                     ",
                     "combine_script": "return state.docs;",
                     "reduce_script": "
-                        def PATH_SEPARATOR = '-';
-
                         /* build graph */
                         List attach_to_children(def children, def parent) {
                             def unassigned_children = [];
@@ -182,6 +180,8 @@
 
                         /* build paths */
                         void build_paths(def path, def node, def out_paths, def out_queues, def root_time, def enqueue_time, def enqueue_service, def depth) {
+                            def PATH_SEPARATOR = '-';
+
                             /* exiting queue, record hop-by-hop metrics */
                             if ((node['kind'].equals('enter')) && (enqueue_time > 0)) {
                                 def new_queue_doc = new HashMap();

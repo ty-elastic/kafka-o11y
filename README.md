@@ -1,36 +1,40 @@
+# Notes
+
+`es/transforms/kafka-latency-1m.json` assumes ECS field names.
+
+* If you are using Jaeger-based tracing, you will need to adjust the field names in `es/transforms/kafka-latency-1m.json` accordingly.
+* If you are using OTel-native-based tracing (EDOT Collector with Elasticsearch Exporter), you will need to adjust the field names in `es/transforms/kafka-latency-1m.json` accordingly.
+
+# Setup
+
 ## Environment Variables Setup
 
 Create a `.env` and follow the steps below to add the necessary values:
 
-1. while your deployment is being setup copy the `username` and `password` provided:
-
 ELASTICSEARCH_USER=
 ELASTICSEARCH_PASSWORD=
-
-2. from `https://cloud.elastic.co/deployments` click on a deployment and on `Copy endpoint` to fill the following values:
+ELASTICSEARCH_APIKEY=
+ELASTIC_APM_SERVER_SECRET=
+ELASTIC_APM_SERVER_ENDPOINT=
 
 ELASTICSEARCH_URL=
 KIBANA_URL=
-ELASTIC_APM_SERVER_ENDPOINT=
-
-> NOTE copying the endpoint will not add the necessary port (443) to the end of the URL, make sure to add it (see example .env below)
-
-3. from `https://YOUR_DEPLOYMENT.elastic-cloud.com/app/management/security/api_keys/` click on `Create API Key`:
-
-ELASTICSEARCH_APIKEY=
-
-4. from `https://YOUR_DEPLOYMENT.elastic-cloud.com/app/home#/tutorial/apm` copy the `OTEL_EXPORTER_OTLP_HEADERS` value:
-
-ELASTIC_APM_SERVER_SECRET=
-
-### Export env values so Docker can access them
 
 `export $(cat .env | xargs)`
 
-### Build
+## Elastic Setup
+
+Load transforms and Kibana resources:
+
+```
+cd es
+./es.sh
+```
+
+## Build
 
 `docker compose build`
 
-### Run
+# Run
 
 `docker compose up`
