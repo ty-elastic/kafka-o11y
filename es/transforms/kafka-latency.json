@@ -67,6 +67,12 @@
     "dest": {
         "index": "kafka-latency-1m"
     },
+    "retention_policy": {
+        "time" : {
+            "field": "paths.timestamp",
+            "max_age": "1d"
+        }
+    },
     "sync": {
         "time": {
             "field": "event.ingested",
