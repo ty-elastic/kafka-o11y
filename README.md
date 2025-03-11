@@ -1,3 +1,7 @@
+![Dashboard](docs/dashboard.png)
+
+![Service Map](docs/map.png)
+
 # Notes
 
 `es/transforms/kafka-latency-1m.json` assumes ECS field names.
