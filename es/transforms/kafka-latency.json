@@ -7,8 +7,8 @@
                     "bool" : {
                         "must" : [
                             {
-                                "exists": {
-                                    "field": "event.ingested"
+                                "term": {
+                                    "data_stream.type": "traces"
                                 }
                             },
                             {
@@ -16,31 +16,6 @@
                                     "event.ingested": {
                                         "gte": "now-1h/m"
                                     }
-                                }
-                            },
-                            {
-                                "exists": {
-                                    "field": "trace.id"
-                                }
-                            },
-                            {
-                                "exists": {
-                                    "field": "span.id"
-                                }
-                            },
-                            {
-                                "exists": {
-                                    "field": "service.name"
-                                }
-                            },
-                            {
-                                "exists": {
-                                    "field": "timestamp.us"
-                                }
-                            },
-                            {
-                                "exists": {
-                                    "field": "service.environment"
                                 }
                             },
                             {
@@ -95,7 +70,7 @@
     "sync": {
         "time": {
             "field": "event.ingested",
-            "delay": "60s"
+            "delay": "120s"
         }
     },
     "pivot": {

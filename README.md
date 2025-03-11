@@ -38,3 +38,8 @@ cd es
 # Run
 
 `docker compose up`
+
+# Scaling Notes
+
+* we set a delay of "120s" to try to avoid instances where we have partial traces and later have to update the record
+* ideally, you could head or tail sample traces before this transform to lower input volume
