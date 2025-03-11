@@ -240,11 +240,6 @@
 
                         def out_doc = new HashMap();
 
-                        /* no docs; unexpected */
-                        if (spans.size() == 0) {
-                            return out_doc;
-                        }
-
                         /* build graph */
                         def unassigned_children = spans;
                         for (parent in spans) {
@@ -262,6 +257,7 @@
                                 }
                                 /* if multiple isolated spans, incomplete trace */
                                 else {
+                                    out_doc['incomplete'] = 'isolated';
                                     return out_doc;
                                 }
                             }
@@ -282,6 +278,11 @@
                         if (out_paths.size() > 0) {
                             /* randomly feature 1 e2e metric */
                             def rand_selection = rand.nextInt(out_paths.size());
+                            /* incomplete trace */
+                            if (out_paths[rand_selection]['depth'] == 0) {
+                                out_doc['incomplete'] = 'depth';
+                                return out_doc;
+                            }
                             out_doc['e2e.path'] = out_paths[rand_selection].path;
                             out_doc['e2e.duration.us'] = out_paths[rand_selection]['duration.us'];
                             out_doc['e2e.depth'] = out_paths[rand_selection]['depth'];

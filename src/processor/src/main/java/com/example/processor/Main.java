@@ -72,6 +72,11 @@ public class Main  implements ApplicationRunner {
             consumer.run(coordinator, producer);
         }
         else if (producer != null) {
+            int producerSleepMs = 1000;
+            if (args.containsOption("producer_sleep_ms") && args.getOptionValues("producer_sleep_ms").get(0).equals("") == false) {
+                producerSleepMs = Integer.parseInt(args.getOptionValues("producer_sleep_ms").get(0));
+            }
+
             Tracer tracer = GlobalOpenTelemetry.getTracer("requests");
             String[] CUSTOMERS = {"q.bert", "mr.t", "m.tv"};
             Random random = new Random();
@@ -91,7 +96,7 @@ public class Main  implements ApplicationRunner {
                     }
                 }
 
-                Thread.sleep(1000);
+                Thread.sleep(producerSleepMs);
             }
         }
     }

@@ -46,6 +46,7 @@ services:
 
       BOOTSTRAP_SERVER: "kafka:10093"
       OUT_TOPIC: "q1"
+      PRODUCER_SLEEP_MS: "1000"
 
       OTEL_SERVICE_NAME: "processor1"
       OTEL_EXPORTER_OTLP_ENDPOINT: "http://collector:5317"
@@ -209,6 +210,7 @@ services:
 
       BOOTSTRAP_SERVER: "kafka:10093"
       OUT_TOPIC: "q8"
+      PRODUCER_SLEEP_MS: "1000"
 
       OTEL_SERVICE_NAME: "processor8"
       OTEL_EXPORTER_OTLP_ENDPOINT: "http://collector:5317"
