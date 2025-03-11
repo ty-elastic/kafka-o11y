@@ -43,3 +43,6 @@ cd es
 
 * we set a delay of "120s" to try to avoid instances where we have partial traces and later have to update the record
 * ideally, you could head or tail sample traces before this transform to lower input volume
+* see https://www.elastic.co/guide/en/elasticsearch/reference/current/transform-scale.html
+  * e.g., increase number of shards used to write output
+* you will need some kind of ILM to prevent the destination index from overflowing
