@@ -4,16 +4,16 @@
 
 # Notes
 
-`es/transforms/kafka-latency-1m.json` assumes ECS field names.
+[kafka-latency.json](es/transforms/kafka-latency.json) assumes ECS field names.
 
-* If you are using Jaeger-based tracing, you will need to adjust the field names in `es/transforms/kafka-latency-1m.json` accordingly.
-* If you are using OTel-native-based tracing (EDOT Collector with Elasticsearch Exporter), you will need to adjust the field names in `es/transforms/kafka-latency-1m.json` accordingly.
+* If you are using Jaeger-based tracing, you will need to adjust the field names in [kafka-latency.json](es/transforms/kafka-latency.json) accordingly
+* If you are using OTel-native-based tracing (EDOT Collector with Elasticsearch Exporter), you will need to adjust the field names in [kafka-latency.json](es/transforms/kafka-latency.json) accordingly
 
 # Setup
 
 ## Environment Variables Setup
 
-Create a `.env` and follow the steps below to add the necessary values:
+Create a `.env` with the following values:
 
 ELASTICSEARCH_USER=
 ELASTICSEARCH_PASSWORD=
@@ -49,4 +49,5 @@ cd es
 * ideally, you could head or tail sample traces before this transform to lower input volume
 * see https://www.elastic.co/guide/en/elasticsearch/reference/current/transform-scale.html
   * e.g., increase number of shards used to write output
+* If the transform is too costly to run realtime (and I would imagine it is at your scale), and you can deal with only looking at “windows” of data (e.g., sanity checking 4 1 hour windows a day), run it “manually” (scheduled by API) at periodic intervals (every 6h), each time processing just the last hour of data (I already do this in the query); maybe it takes 2 hours to run each time. While it might mean you have to wait a few hours to catch a looming problem, it at least it gives you visibility right now.
 * you will need some kind of ILM to prevent the destination index from overflowing
