@@ -37,6 +37,16 @@
                                 "exists": {
                                     "field": "timestamp.us"
                                 }
+                            },
+                            {
+                                "exists": {
+                                    "field": "service.environment"
+                                }
+                            },
+                            {
+                                "term": {
+                                    "service.environment": "kafka"
+                                }
                             }
                         ],
                         "should": [
@@ -105,6 +115,7 @@
                             '@timestamp':doc['@timestamp'].value,
                             'timestamp.us':doc['timestamp.us'].value,
                             'service.name':doc['service.name'].value,
+                            'service.environment':doc['service.environment'].value,
                             'span.id':doc['span.id'].value
                         ];
 
@@ -140,9 +151,6 @@
                                 }
                             }
                         }
-
-                        span['parent'] = null;
-                        span['children'] = [];
                         
                         /* copy all docs from this shard */
                         state.docs.add(span);
@@ -217,6 +225,8 @@
                         for (s in states) {
                             /* for all docs in that shard */
                             for (span in s) {
+                                span['parent'] = null;
+                                span['children'] = [];
                                 spans.add(span);
                             }
                         }
@@ -288,6 +298,7 @@
                         }
 
                         out_doc['root.name'] = root['service.name'];
+                        out_doc['root.environment'] = root['service.environment'];
                         def keys = root['attributes'].keySet();
                         for (key in keys) {
                             out_doc[key] = root['attributes'][key];
