@@ -264,8 +264,8 @@
                         
                         def rand = new Random();
 
-                        /* randomly feature 1 e2e metric */
                         if (out_paths.size() > 0) {
+                            /* randomly feature 1 e2e metric */
                             def rand_selection = rand.nextInt(out_paths.size());
                             out_doc['e2e.path'] = out_paths[rand_selection].path;
                             out_doc['e2e.duration.us'] = out_paths[rand_selection]['duration.us'];
@@ -276,8 +276,8 @@
                             }
                         }
 
-                        /* randomly feature 1 hop-by-hop metric */
                         if (out_queues.size() > 0) {
+                            /* randomly feature 1 hop-by-hop metric */
                             def rand_selection = rand.nextInt(out_queues.size());
                             out_doc['hop.path'] = out_queues[rand_selection].path;
                             out_doc['hop.duration.us'] = out_queues[rand_selection]['duration.us'];
