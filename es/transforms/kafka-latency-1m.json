@@ -111,6 +111,8 @@
                 "scripted_metric": {
                     "init_script": "state.docs = []",
                     "map_script": "
+                        def CUSTOM_LABEL_PREFIX = 'com_example';
+
                         Map span = [
                             '@timestamp':doc['@timestamp'].value,
                             'timestamp.us':doc['timestamp.us'].value,
@@ -123,8 +125,7 @@
                             span['parent.id'] = doc['parent.id'].value;
                         }
 
-                        /* copy message queue name */
-                        /* bookend queues with exit (enqueue) and enter (dequeue) labels */
+                        /* copy message queue name and bookend queues with exit (enqueue) and enter (dequeue) labels */
                         if (doc.containsKey('span.message.queue.name') && (doc['span.message.queue.name'].size() > 0)) {
                             span['message.queue.name'] = doc['span.message.queue.name'].value;
                             if (doc['span.action'].value.equals('publish')) {
@@ -142,34 +143,40 @@
                             }
                         }
 
+                        /* copy custom attributes */
                         span['attributes'] = new HashMap();
                         if (params['_source'].keySet().contains('labels')) {
                             def labels = params['_source']['labels'].keySet();
                             for (label in labels) {
-                                if (label.contains('com_example')) {
+                                if (label.contains(CUSTOM_LABEL_PREFIX)) {
                                     span['attributes'][label] = params['_source']['labels'][label];
                                 }
                             }
                         }
                         
-                        /* copy all docs from this shard */
+                        /* copy all docs for this trace.id from this shard */
                         state.docs.add(span);
                     ",
                     "combine_script": "return state.docs;",
                     "reduce_script": "
+                        def PATH_SEPARATOR = '-';
+
                         /* build graph */
                         List attach_to_children(def children, def parent) {
                             def unassigned_children = [];
-                            /* for all remaining children */
+                            /* for all unassigned children */
                             for (child in children) {
                                 /* assign child to parent */
                                 if (child['parent.id'].equals(parent['span.id'])) {
                                     parent['children'].add(child);
                                     child['parent'] = parent;
-                                } else {
+                                }
+                                /* child doesn't belong to this parent */ 
+                                else {
                                     unassigned_children.add(child);
                                 }
                             }
+                            /* children can only belong to a single parent; narrow search next time */
                             return unassigned_children;
                         } 
 
@@ -178,7 +185,7 @@
                             /* exiting queue, record hop-by-hop metrics */
                             if ((node['kind'].equals('enter')) && (enqueue_time > 0)) {
                                 def new_queue_doc = new HashMap();
-                                new_queue_doc['path'] = enqueue_service + '-' + node['service.name'];
+                                new_queue_doc['path'] = enqueue_service + PATH_SEPARATOR + node['service.name'];
                                 new_queue_doc['duration.us'] = node['timestamp.us'] - enqueue_time;
                                 out_queues.add(new_queue_doc);
                                 depth = depth + 1;
@@ -188,7 +195,7 @@
                             if (node['children'].size() == 0) {
                                 def new_path = path;
                                 if (!new_path.equals('')) {
-                                    new_path += '-';
+                                    new_path += PATH_SEPARATOR;
                                 }
                                 new_path += node['service.name'];
 
@@ -206,9 +213,9 @@
                                 /* entering queue */
                                 if (node['kind'].equals('exit')) {
                                     if (!new_path.equals('')) {
-                                        new_path += '-';
+                                        new_path += PATH_SEPARATOR;
                                     }
-                                    new_path += node['service.name'] + '-' + node['message.queue.name'];
+                                    new_path += node['service.name'] + PATH_SEPARATOR + node['message.queue.name'];
 
                                     /* entering queue, record time for hop-by-hop metrics */
                                     enqueue_time = node['timestamp.us'];
@@ -297,8 +304,9 @@
                             }
                         }
 
-                        out_doc['root.name'] = root['service.name'];
-                        out_doc['root.environment'] = root['service.environment'];
+                        out_doc['root.service.name'] = root['service.name'];
+                        out_doc['service.environment'] = root['service.environment'];
+                        /* copy attributes */
                         def keys = root['attributes'].keySet();
                         for (key in keys) {
                             out_doc[key] = root['attributes'][key];
