@@ -10,9 +10,7 @@ import io.opentelemetry.api.baggage.Baggage;
 import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.api.trace.Span;
 import io.opentelemetry.api.trace.SpanKind;
-import io.opentelemetry.context.Context;
 import io.opentelemetry.context.Scope;
-import io.opentelemetry.context.ContextKey;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -83,11 +81,9 @@ public class Main  implements ApplicationRunner {
                 Baggage updatedBaggage = Baggage.current().toBuilder()
                     .put("com.example.customer.id", customerId)
                     .build();
-
                 // Activate the updated baggage in the current context
                 try (Scope customerScope = updatedBaggage.makeCurrent()) {
                     Span span = tracer.spanBuilder("generateMessage").setSpanKind(SpanKind.INTERNAL).startSpan();
-                    //span.setAttribute("com.example.customer.id", customerId);
                     try (Scope spanScope = span.makeCurrent()) {
                         UUID uuid = UUID.randomUUID();
                         producer.notify(uuid.toString());
