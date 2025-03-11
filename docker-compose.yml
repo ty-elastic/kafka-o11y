@@ -200,7 +200,7 @@ services:
       kafka:
         condition: service_healthy
 
-  processor8d:
+  processor8:
     build:
       context: ./src/processor/
     restart: on-failure
@@ -210,7 +210,7 @@ services:
       BOOTSTRAP_SERVER: "kafka:10093"
       OUT_TOPIC: "q8"
 
-      OTEL_SERVICE_NAME: "processor1"
+      OTEL_SERVICE_NAME: "processor8"
       OTEL_EXPORTER_OTLP_ENDPOINT: "http://collector:5317"
       OTEL_EXPORTER_OTLP_PROTOCOL: "grpc"
       OTEL_RESOURCE_ATTRIBUTES: "deployment.environment=kafka"

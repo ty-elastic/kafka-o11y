@@ -235,12 +235,20 @@
                             unassigned_children = attach_to_children(unassigned_children, parent);
                         }
 
-                        /* arbitrary start */
-                        def root = spans[0];
-                        /* climb to root */
-                        while (root['parent'] != null) {
-                            root = root['parent'];
-                        }
+                        /* find root */
+                        def root = null;
+                        for (span in spans) {
+                            /* possible root */
+                            if (span['parent'] == null) {
+                                if (root == null) {
+                                    root = span;
+                                }
+                                /* if multiple isolated spans, incomplete trace */
+                                else {
+                                    return out_doc;
+                                }
+                            }
+                        }     
 
                         /* build paths */
                         def path = '';
