@@ -20,6 +20,8 @@ ENV OUT_TOPIC=""
 EXPOSE 9003
 ENTRYPOINT java \
 -javaagent:elastic-otel-javaagent.jar \
+-Dotel.java.experimental.span-attributes.copy-from-baggage.include=* \
+-Dotel.java.experimental.span-stacktrace.min.duration=-1 \
 -jar /processor.jar \
 --coordinator_host=${COORDINATOR_HOST} \
 --bootstrap_server=${BOOTSTRAP_SERVER} \

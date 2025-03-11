@@ -80,7 +80,7 @@
         }
     },
     "dest": {
-        "index": "kafka-trace-stats-1m"
+        "index": "kafka-latency-1m"
     },
     "sync": {
         "time": {
@@ -136,6 +136,16 @@
                             }
                         }
 
+                        span['attributes'] = new HashMap();
+                        if (params['_source'].keySet().contains('labels')) {
+                            def labels = params['_source']['labels'].keySet();
+                            for (label in labels) {
+                                if (label.contains('com_example')) {
+                                    span['attributes'][label] = params['_source']['labels'][label];
+                                }
+                            }
+                        }
+                        
                         /* copy all docs from this shard */
                         state.docs.add(span);
                     ",
@@ -143,7 +153,7 @@
                     "reduce_script": "
                         /* build graph */
                         boolean attach_to_parent(def states, def child) {
-                            def is_root = true;
+                            def isolated = true;
                             /* for all shards */
                             for (s in states) {
                                 /* for all docs in that shard */
@@ -155,11 +165,11 @@
                                         /* assign child to parent */
                                         span['children'].add(child);
                                         /* parent found, can't be root */
-                                        is_root = false;
+                                        isolated = false;
                                     }
                                 }
                             }
-                            return is_root;
+                            return isolated;
                         } 
 
                         /* build paths */
@@ -210,23 +220,37 @@
 
                         /* build graph */
                         def root = null;
+                        def isolated_spans = [];
                         /* for all shards */
                         for (s in states) {
-                            if (s == null) {
-                                continue;
-                            }
                             /* for all docs in that shard */
                             for (span in s) {
                                 if (span.containsKey('parent.id') == false) {
                                     root = span;
                                 } else {
-                                    def is_root = attach_to_parent(states, span);
-                                    if ((is_root == true) && (root == null)) {
-                                        root = span;
+                                    def isolated = attach_to_parent(states, span);
+                                    if (isolated) {
+                                        isolated_spans.add(span);
                                     }
                                 }
                             }
                         }
+                        
+                        if ((root == null) && (isolated_spans.size() > 0)) {
+                            isolated_spans.sort((HashMap o1, HashMap o2)->o1['timestamp.us'].compareTo(o2['timestamp.us']));
+                            root = isolated_spans[0];
+                            isolated_spans.remove(0);
+                        }
+
+                        def out_doc = new HashMap();
+
+                        /* if there are any remaining isolated spans, then this is an incomplete doc */
+                        if (isolated_spans.size() > 0) {
+                            out_doc['isolated_spans'] = isolated_spans.size();
+                            return out_doc;
+                        }
+                        if (root == null)
+                            return out_doc;
 
                         /* build paths */
                         def path = '';
@@ -236,36 +260,39 @@
                         build_paths(path, root, out_paths, out_queues, root_time, 0, '');
 
                         /* output doc */
-                        def out_doc = new HashMap();
                         out_doc['timestamp'] = root['@timestamp'];
-
+                        
                         def rand = new Random();
 
                         /* randomly feature 1 e2e metric */
                         if (out_paths.size() > 0) {
                             def rand_selection = rand.nextInt(out_paths.size());
-                            out_doc['e2e.rand.path'] = out_paths[rand_selection].path;
-                            out_doc['e2e.rand.duration.us'] = out_paths[rand_selection]['duration.us'];
-                        }
+                            out_doc['e2e.path'] = out_paths[rand_selection].path;
+                            out_doc['e2e.duration.us'] = out_paths[rand_selection]['duration.us'];
 
-                        /* record all e2e samples */
-                        for (doc in out_paths) {
-                            out_doc['e2e.sample.' + doc.path] = doc['duration.us'];
+                            /* record all e2e samples */
+                            for (doc in out_paths) {
+                                out_doc['sample.e2e.' + doc.path] = doc['duration.us'];
+                            }
                         }
 
                         /* randomly feature 1 hop-by-hop metric */
                         if (out_queues.size() > 0) {
                             def rand_selection = rand.nextInt(out_queues.size());
-                            out_doc['hop.rand.path'] = out_queues[rand_selection].path;
-                            out_doc['hop.rand.duration.us'] = out_queues[rand_selection]['duration.us'];
-                        }
+                            out_doc['hop.path'] = out_queues[rand_selection].path;
+                            out_doc['hop.duration.us'] = out_queues[rand_selection]['duration.us'];
 
-                        /* record all hop-by-hop samples */
-                        for (doc in out_queues) {
-                            out_doc['hop.sample.' + doc.path] = doc['duration.us'];
+                            /* record all hop-by-hop samples */
+                            for (doc in out_queues) {
+                                out_doc['sample.hop.' + doc.path] = doc['duration.us'];
+                            }
                         }
 
                         out_doc['root.name'] = root['service.name'];
+                        def keys = root['attributes'].keySet();
+                        for (key in keys) {
+                            out_doc[key] = root['attributes'][key];
+                        }
 
                         return out_doc;
                     "

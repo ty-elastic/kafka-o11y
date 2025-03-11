@@ -6,13 +6,18 @@ import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 
 import io.opentelemetry.api.GlobalOpenTelemetry;
-import io.opentelemetry.api.OpenTelemetry;
+import io.opentelemetry.api.baggage.Baggage;
 import io.opentelemetry.api.trace.Tracer;
 import io.opentelemetry.api.trace.Span;
+import io.opentelemetry.api.trace.SpanKind;
+import io.opentelemetry.context.Context;
+import io.opentelemetry.context.Scope;
+import io.opentelemetry.context.ContextKey;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.Random;
 import java.util.UUID;
 
 @SpringBootApplication
@@ -69,12 +74,27 @@ public class Main  implements ApplicationRunner {
             consumer.run(coordinator, producer);
         }
         else if (producer != null) {
-            Tracer tracer = GlobalOpenTelemetry.getTracer("producer");
+            Tracer tracer = GlobalOpenTelemetry.getTracer("requests");
+            String[] CUSTOMERS = {"q.bert", "mr.t", "m.tv"};
+            Random random = new Random();
             while (true) {
-                Span span = tracer.spanBuilder("produceSyntheticMessage").startSpan();
-                UUID uuid = UUID.randomUUID();
-                producer.notify(uuid.toString());
-                span.end();
+                String customerId = CUSTOMERS[random.nextInt(CUSTOMERS.length)];
+                // Create a new baggage with an additional attribute or modify an existing one
+                Baggage updatedBaggage = Baggage.current().toBuilder()
+                    .put("com.example.customer.id", customerId)
+                    .build();
+
+                // Activate the updated baggage in the current context
+                try (Scope customerScope = updatedBaggage.makeCurrent()) {
+                    Span span = tracer.spanBuilder("generateMessage").setSpanKind(SpanKind.INTERNAL).startSpan();
+                    //span.setAttribute("com.example.customer.id", customerId);
+                    try (Scope spanScope = span.makeCurrent()) {
+                        UUID uuid = UUID.randomUUID();
+                        producer.notify(uuid.toString());
+                        span.end();
+                    }
+                }
+
                 Thread.sleep(1000);
             }
         }
