@@ -15,6 +15,7 @@
 
 Create a `.env` with the following values:
 
+```
 ELASTICSEARCH_USER=
 ELASTICSEARCH_PASSWORD=
 ELASTICSEARCH_APIKEY=
@@ -23,6 +24,7 @@ ELASTIC_APM_SERVER_ENDPOINT=
 
 ELASTICSEARCH_URL=
 KIBANA_URL=
+```
 
 `export $(cat .env | xargs)`
 
