@@ -50,4 +50,3 @@ cd es
 * see https://www.elastic.co/guide/en/elasticsearch/reference/current/transform-scale.html
   * e.g., increase number of shards used to write output
 * If the transform is too costly to run realtime, and you can deal with only looking at “windows” of data (e.g., sanity checking 4 1 hour windows a day), run it “manually” (scheduled by API) at periodic intervals (every 6h), each time processing just the last hour of data (I already do this in the query); maybe it takes 2 hours to run each time. While it might mean you have to wait a few hours to catch a looming problem, it at least it gives you visibility right now.
-* you will need some kind of ILM to prevent the destination index from overflowing
